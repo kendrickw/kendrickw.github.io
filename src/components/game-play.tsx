@@ -1,5 +1,7 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useIsMobile } from '@/hooks/is-mobile';
+import React from 'react';
+import { useEventListener, useWindowSize } from 'usehooks-ts';
 
 interface Platform {
   x: number;
@@ -18,50 +20,105 @@ interface InfoBox {
   color: string;
 }
 
+/** User control events */
+interface ControlEvent {
+  left: boolean;
+  right: boolean;
+  jump: boolean;
+}
+
 export function GamePlay() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const touchControlsRef = useRef({
+  const windowSize = useWindowSize();
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [gameStarted, setGameStarted] = React.useState(false);
+  const isMobile = useIsMobile();
+  const controlRef = React.useRef<ControlEvent>({
     left: false,
     right: false,
     jump: false,
   });
 
-  useEffect(() => {
-    // Detect mobile device
-    const checkMobile = () => {
-      setIsMobile(
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        ) || window.innerWidth < 768
-      );
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
+  const resizeCanvas = React.useCallback(() => {
+    if (canvasRef.current) {
+      canvasRef.current.width = windowSize.width;
+      canvasRef.current.height = windowSize.height;
+    }
+  }, [windowSize]);
+  useEventListener('resize', resizeCanvas);
 
+  const showTouchControl = gameStarted && (isMobile || windowSize.width < 768);
+
+  const updateControl = React.useCallback(
+    (key: keyof ControlEvent, state: boolean) => {
+      controlRef.current[key] = state;
+    },
+    []
+  );
+
+  const handleKeyDown = React.useCallback(
+    (e: KeyboardEvent) => {
+      if (!gameStarted) {
+        setGameStarted(true);
+      }
+      switch (e.key) {
+        case 'ArrowRight':
+          updateControl('right', true);
+          break;
+        case 'ArrowLeft':
+          updateControl('left', true);
+          break;
+        case 'ArrowUp':
+        case ' ':
+          updateControl('jump', true);
+          break;
+      }
+    },
+    [gameStarted, updateControl]
+  );
+
+  const handleKeyUp = React.useCallback(
+    (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'ArrowRight':
+          updateControl('right', false);
+          break;
+        case 'ArrowLeft':
+          updateControl('left', false);
+          break;
+        case 'ArrowUp':
+        case ' ':
+          updateControl('jump', false);
+          break;
+      }
+    },
+    [updateControl]
+  );
+  useEventListener('keydown', handleKeyDown);
+  useEventListener('keyup', handleKeyUp);
+
+  React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
+    /** Grab font family defined in `layout.tsx` */
+    const style = getComputedStyle(document.documentElement);
+    const fontFamily = style.getPropertyValue('--font-default');
+
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
 
     // Game state
     let animationId: number;
     const groundY = canvas.height - 100;
     const player = {
+      // Initial position of player
       x: 100,
-      y: groundY - 72, // Start on the ground instead of falling from sky
-      width: 48, // 1.5x larger (32 * 1.5)
-      height: 72, // 1.5x larger (48 * 1.5)
+      y: groundY - 72,
+      // dimension of player
+      width: 48,
+      height: 72,
       velocityY: 0,
       velocityX: 0,
       speed: 5,
@@ -80,7 +137,7 @@ export function GamePlay() {
     const gravity = 0.8;
     const loopWidth = 2000; // Width of one loop cycle
 
-    // Base platforms (will be repeated)
+    // Base platforms
     const basePlatforms: Platform[] = [
       { x: 300, y: groundY - 100, width: 150, height: 20 },
       { x: 550, y: groundY - 150, width: 150, height: 20 },
@@ -97,8 +154,11 @@ export function GamePlay() {
         y: groundY - 200,
         width: 80,
         height: 80,
-        title: '👨‍💻 About',
-        content: ['Full Stack Developer', 'Game Enthusiast', 'Pixel Art Lover'],
+        title: "👨‍🚀 I'm Kendrick!",
+        content: [
+          '✨ Full Stack Developer by day.',
+          '🧙‍♂️ Stack Whisperer by night.',
+        ],
         color: '#4CAF50',
       },
       {
@@ -106,9 +166,15 @@ export function GamePlay() {
         y: groundY - 180,
         width: 80,
         height: 80,
-        title: '🛠️ Skills',
-        content: ['React & Next.js', 'TypeScript', 'Node.js', 'Game Dev'],
-        color: '#2196F3',
+        title: '🧰 My Dev Toolbox',
+        content: [
+          'React & Next.js',
+          'TailwindCSS',
+          'Node.js',
+          'Prisma',
+          '☁︎ Google, Azure, AWS',
+        ],
+        color: '#2156A3',
       },
       {
         x: 1400,
@@ -121,27 +187,7 @@ export function GamePlay() {
       },
     ];
 
-    let hoveredBox: InfoBox | null = null as InfoBox | null;
-
-    // Keyboard state
-    const keys: { [key: string]: boolean } = {};
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      keys[e.key] = true;
-      if (
-        !gameStarted &&
-        (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === ' ')
-      ) {
-        setGameStarted(true);
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keys[e.key] = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    let hoveredBox: InfoBox | null = null;
 
     // Draw flag pole
     const drawFlagPole = (x: number, y: number) => {
@@ -178,8 +224,8 @@ export function GamePlay() {
       ctx.restore();
     };
 
-    // Draw pixel art character
-    const drawCharacter = (
+    // Draw player
+    const drawPlayer = (
       x: number,
       y: number,
       direction: number,
@@ -192,57 +238,56 @@ export function GamePlay() {
       }
       ctx.translate(-player.width / 2, 0);
 
-      // Chibi proportions: Head is ~50% of total height, body is smaller
       // Character fits in 48x72 box
 
       // Skin tone
       ctx.fillStyle = '#D4A574';
 
-      // Head (much larger for chibi style - 30x30)
+      // Head
       ctx.fillRect(9, 0, 30, 30);
 
-      // Hair (black) - fuller, rounder for chibi
+      // Hair
       ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(6, 0, 36, 14); // Top
-      ctx.fillRect(6, 0, 6, 24); // Left side
-      ctx.fillRect(36, 0, 6, 24); // Right side
-      // Hair spikes for anime style
+      ctx.fillRect(8, 0, 32, 14); // Top
+      ctx.fillRect(6, 6, 6, 10); // Left side
+      ctx.fillRect(36, 6, 6, 10); // Right side
+      // Hair spikes
       ctx.fillRect(12, -4, 5, 5);
       ctx.fillRect(21, -5, 6, 6);
       ctx.fillRect(31, -4, 5, 5);
 
-      // Face outline (lighter for depth)
+      // Face outline
       ctx.fillStyle = '#D4A574';
       ctx.fillRect(12, 10, 24, 18);
 
-      // Glasses frame (thicker for chibi)
+      // Glasses frame
       ctx.fillStyle = '#333';
       ctx.fillRect(14, 14, 8, 8); // Left lens
       ctx.fillRect(26, 14, 8, 8); // Right lens
       ctx.fillRect(22, 16, 4, 3); // Bridge
 
-      // Glasses lenses (reflective)
+      // Glasses lenses
       ctx.fillStyle = '#87CEEB';
       ctx.fillRect(15, 15, 6, 6);
       ctx.fillRect(27, 15, 6, 6);
 
-      // Eyes (larger anime eyes behind glasses)
+      // Eyes
       ctx.fillStyle = '#000';
       ctx.fillRect(16, 16, 4, 4); // Left eye
       ctx.fillRect(28, 16, 4, 4); // Right eye
 
-      // Eye highlights (anime style)
+      // Eye highlights
       ctx.fillStyle = '#FFF';
       ctx.fillRect(17, 17, 2, 2);
       ctx.fillRect(29, 17, 2, 2);
 
-      // Cute smile
+      // Smile
       ctx.fillStyle = '#000';
       ctx.fillRect(20, 24, 8, 2);
       ctx.fillRect(18, 23, 2, 2);
       ctx.fillRect(28, 23, 2, 2);
 
-      // Body (shirt) - smaller for chibi proportions
+      // Body (shirt)
       ctx.fillStyle = '#3498db';
       ctx.fillRect(12, 30, 24, 18);
 
@@ -250,7 +295,7 @@ export function GamePlay() {
       ctx.fillStyle = '#2980b9';
       ctx.fillRect(18, 30, 12, 3);
 
-      // Arms (shorter and cuter)
+      // Arms
       const armOffset = Math.sin(frame * 0.3) * 3;
       ctx.fillStyle = '#3498db';
       ctx.fillRect(4, 32 + armOffset, 8, 12); // Left arm
@@ -261,13 +306,13 @@ export function GamePlay() {
       ctx.fillRect(4, 43 + armOffset, 8, 4);
       ctx.fillRect(36, 43 - armOffset, 8, 4);
 
-      // Legs (short and stubby for chibi)
+      // Legs
       const legOffset = Math.sin(frame * 0.3) * 4;
       ctx.fillStyle = '#2c3e50';
       ctx.fillRect(15, 48, 8, 14); // Left leg
       ctx.fillRect(25, 48, 8, 14); // Right leg
 
-      // Feet (larger for chibi cuteness)
+      // Feet
       ctx.fillStyle = '#8B4513';
       ctx.fillRect(13, 61 + legOffset, 11, 6); // Left foot
       ctx.fillRect(24, 61 - legOffset, 11, 6); // Right foot
@@ -292,12 +337,12 @@ export function GamePlay() {
         ctx.fill();
       }
 
-      // Handle input (keyboard + touch)
-      if (keys['ArrowRight'] || touchControlsRef.current.right) {
+      // Handle input
+      if (controlRef.current.right) {
         player.velocityX = player.speed;
         player.direction = 1;
         player.frameTimer++;
-      } else if (keys['ArrowLeft'] || touchControlsRef.current.left) {
+      } else if (controlRef.current.left) {
         player.velocityX = -player.speed;
         player.direction = -1;
         player.frameTimer++;
@@ -306,10 +351,7 @@ export function GamePlay() {
         player.frameTimer = 0;
       }
 
-      if (
-        (keys[' '] || keys['ArrowUp'] || touchControlsRef.current.jump) &&
-        !player.isJumping
-      ) {
+      if (controlRef.current.jump && !player.isJumping) {
         player.velocityY = -player.jumpPower;
         player.isJumping = true;
       }
@@ -409,7 +451,7 @@ export function GamePlay() {
 
             // Draw icon/title
             ctx.fillStyle = '#fff';
-            ctx.font = '24px Arial';
+            ctx.font = `24px ${fontFamily}`;
             ctx.textAlign = 'center';
             ctx.fillText(
               box.title.split(' ')[0],
@@ -433,12 +475,7 @@ export function GamePlay() {
       }
 
       // Draw player
-      drawCharacter(
-        player.x - camera.x,
-        player.y,
-        player.direction,
-        player.frame
-      );
+      drawPlayer(player.x - camera.x, player.y, player.direction, player.frame);
 
       // Draw UI
       if (!gameStarted) {
@@ -447,17 +484,18 @@ export function GamePlay() {
         ctx.fillStyle = '#fff';
         const titleSize = canvas.width < 768 ? 32 : 48;
         const textSize = canvas.width < 768 ? 16 : 24;
-        ctx.font = `bold ${titleSize}px Arial`;
+
+        ctx.font = `bold ${titleSize}px ${fontFamily}`;
         ctx.textAlign = 'center';
         ctx.fillText(
           "Kendrick's Adventure",
           canvas.width / 2,
           canvas.height / 2 - 50
         );
-        ctx.font = `${textSize}px Arial`;
+        ctx.font = `${textSize}px ${fontFamily}`;
         if (canvas.width >= 768) {
           ctx.fillText(
-            'Use Arrow Keys or WASD to move',
+            'Use Arrow Keys to move',
             canvas.width / 2,
             canvas.height / 2 + 20
           );
@@ -488,8 +526,9 @@ export function GamePlay() {
       // Draw info panel
       if (hoveredBox && gameStarted) {
         const box = hoveredBox as InfoBox;
+        const itemCount = box.content.length;
         const panelWidth = 300;
-        const panelHeight = 200;
+        const panelHeight = 80 + itemCount * 30;
         const panelX = canvas.width - panelWidth - 20;
         const panelY = 20;
 
@@ -501,11 +540,11 @@ export function GamePlay() {
         ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
 
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 24px Arial';
+        ctx.font = `bold 24px ${fontFamily}`;
         ctx.textAlign = 'left';
         ctx.fillText(box.title, panelX + 20, panelY + 40);
 
-        ctx.font = '18px Arial';
+        ctx.font = `18px ${fontFamily}`;
         box.content.forEach((line: string, i: number) => {
           ctx.fillText(line, panelX + 20, panelY + 80 + i * 30);
         });
@@ -514,13 +553,13 @@ export function GamePlay() {
       // Draw controls hint (desktop only)
       if (gameStarted && canvas.width >= 768) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(10, 10, 200, 80);
+        ctx.fillRect(10, 10, 150, 75);
         ctx.fillStyle = '#fff';
-        ctx.font = '14px Arial';
+        ctx.font = `14px ${fontFamily}`;
         ctx.textAlign = 'left';
         ctx.fillText('Controls:', 20, 30);
-        ctx.fillText('← → : Move', 20, 50);
-        ctx.fillText('Space/↑ : Jump', 20, 70);
+        ctx.fillText('⇦ ⇨ : Move', 20, 50);
+        ctx.fillText('Space / ⇧ : Jump', 20, 70);
       }
 
       // Show message when near flag pole (but not at the start)
@@ -541,18 +580,18 @@ export function GamePlay() {
           100
         );
         ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 24px Arial';
+        ctx.font = `bold 24px ${fontFamily}`;
         ctx.textAlign = 'center';
         ctx.fillText(
-          'Loop Complete!',
+          'Stage Complete!',
           canvas.width / 2,
           canvas.height / 2 - 10
         );
-        ctx.font = '18px Arial';
+        ctx.font = `18px ${fontFamily}`;
         ctx.fillStyle = '#fff';
-        const loopNumber = Math.floor(player.x / loopWidth) + 1;
+        const loopNumber = Math.floor((player.x + 150) / loopWidth) + 1;
         ctx.fillText(
-          `Starting loop ${loopNumber}...`,
+          `Procced to stage ${loopNumber}...`,
           canvas.width / 2,
           canvas.height / 2 + 20
         );
@@ -564,12 +603,9 @@ export function GamePlay() {
     gameLoop();
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('resize', resizeCanvas);
       cancelAnimationFrame(animationId);
     };
-  }, [gameStarted]);
+  }, [gameStarted, resizeCanvas]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     // Only start game if touching the canvas directly, not the buttons
@@ -578,32 +614,8 @@ export function GamePlay() {
     }
   };
 
-  const handleButtonPress = (
-    button: 'left' | 'right' | 'jump',
-    e: React.TouchEvent | React.MouseEvent
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Start game if not started (for movement buttons only, not jump)
-    if (!gameStarted && (button === 'left' || button === 'right')) {
-      setGameStarted(true);
-    }
-
-    touchControlsRef.current[button] = true;
-  };
-
-  const handleButtonRelease = (
-    button: 'left' | 'right' | 'jump',
-    e: React.TouchEvent | React.MouseEvent
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-    touchControlsRef.current[button] = false;
-  };
-
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black">
+    <div className="relative h-screen w-screen overflow-hidden">
       <canvas
         ref={canvasRef}
         className="block"
@@ -612,45 +624,45 @@ export function GamePlay() {
       />
 
       {/* Mobile Controls */}
-      {isMobile && gameStarted && (
+      {showTouchControl && (
         <div className="pointer-events-none absolute inset-0 flex items-end justify-between p-4 pb-8">
           {/* Left Side - Movement Controls */}
           <div className="pointer-events-auto flex gap-3">
             {/* Left Button */}
             <button
-              onTouchStart={(e) => handleButtonPress('left', e)}
-              onTouchEnd={(e) => handleButtonRelease('left', e)}
-              onMouseDown={(e) => handleButtonPress('left', e)}
-              onMouseUp={(e) => handleButtonRelease('left', e)}
-              onMouseLeave={(e) => handleButtonRelease('left', e)}
+              onTouchStart={() => updateControl('left', true)}
+              onTouchEnd={() => updateControl('left', false)}
+              onMouseDown={() => updateControl('left', true)}
+              onMouseUp={() => updateControl('left', false)}
+              onMouseLeave={() => updateControl('left', false)}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 text-3xl backdrop-blur-sm active:bg-white/40"
               style={{ touchAction: 'none' }}
             >
-              ←
+              ⇦
             </button>
 
             {/* Right Button */}
             <button
-              onTouchStart={(e) => handleButtonPress('right', e)}
-              onTouchEnd={(e) => handleButtonRelease('right', e)}
-              onMouseDown={(e) => handleButtonPress('right', e)}
-              onMouseUp={(e) => handleButtonRelease('right', e)}
-              onMouseLeave={(e) => handleButtonRelease('right', e)}
+              onTouchStart={() => updateControl('right', true)}
+              onTouchEnd={() => updateControl('right', false)}
+              onMouseDown={() => updateControl('right', true)}
+              onMouseUp={() => updateControl('right', false)}
+              onMouseLeave={() => updateControl('right', false)}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 text-3xl backdrop-blur-sm active:bg-white/40"
               style={{ touchAction: 'none' }}
             >
-              →
+              ⇨
             </button>
           </div>
 
           {/* Right Side - Jump Button */}
           <div className="pointer-events-auto">
             <button
-              onTouchStart={(e) => handleButtonPress('jump', e)}
-              onTouchEnd={(e) => handleButtonRelease('jump', e)}
-              onMouseDown={(e) => handleButtonPress('jump', e)}
-              onMouseUp={(e) => handleButtonRelease('jump', e)}
-              onMouseLeave={(e) => handleButtonRelease('jump', e)}
+              onTouchStart={() => updateControl('jump', true)}
+              onTouchEnd={() => updateControl('jump', false)}
+              onMouseDown={() => updateControl('jump', true)}
+              onMouseUp={() => updateControl('jump', false)}
+              onMouseLeave={() => updateControl('jump', false)}
               className="flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-xl font-bold backdrop-blur-sm active:bg-white/40"
               style={{ touchAction: 'none' }}
             >
